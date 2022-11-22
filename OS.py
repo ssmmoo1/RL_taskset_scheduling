@@ -19,6 +19,7 @@ class OS:
         self.pset = pset    #list of processor objects
         self.tp_mapping = [] #array of diciontaries {"processor":p, "task":t}
         self.ready_tasks = [] #hold tasks that are ready to run but not mapped
+        self.previous_tasks = []
         self.time = 0
 
     #calling run simulates 1 time step
@@ -39,8 +40,10 @@ class OS:
 
 
         #Now call scheduler to map tasks to processors
-        self.tp_mapping = self.scheduler(self.ready_tasks, self.pset, self.tp_mapping)
+        self.tp_mapping = self.scheduler(self.previous_tasks, self.ready_tasks, self.pset, self.tp_mapping)
 
+
+        self.previous_tasks = self.ready_tasks.copy() #TODO decide if I want to copy here
 
         #Now execute mapped tasks
         for tp_map in self.tp_mapping:
