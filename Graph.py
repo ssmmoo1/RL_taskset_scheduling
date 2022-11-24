@@ -98,32 +98,28 @@ def create_task_graph(previous_tasks, ready_tasks, pset, tp_mapping):
     #Processors - power
 
     #Features for previous tasks
-    execution_times = []
-    deadlines = []
-    for task in previous_tasks:
-        execution_times.append(task.exec_time)
-        deadlines.append(task.period)
 
-    graph.nodes["previous_task"].data["execution_time"] = torch.tensor(execution_times)
-    graph.nodes["previous_task"].data["deadline"] = torch.tensor(deadlines)
+    features = torch.zeros(len(previous_tasks), 2)
+    for i, task in enumerate(previous_tasks):
+        features[i][0] = task.exec_time
+        features[i][1] = task.period
+
+    graph.nodes["previous_task"].data["features"] = features
 
     #Features for ready tasks
-    execution_times = []
-    deadlines = []
-    for task in ready_tasks:
-        execution_times.append(task.exec_time)
-        deadlines.append(task.period)
+    features = torch.zeros(len(ready_tasks), 2)
+    for i, task in enumerate(ready_tasks):
+        features[i][0] = task.exec_time
+        features[i][1] = task.period
 
-    graph.nodes["ready_task"].data["execution_time"] = torch.tensor(execution_times)
-    graph.nodes["ready_task"].data["deadline"] = torch.tensor(deadlines)
-
+    graph.nodes["ready_task"].data["features"] = features
 
     #Features for processors
-    powers = []
-    for processor in pset:
-        powers.append(processor.power)
+    features = torch.zeros(len(pset), 2)
+    for i, processor in enumerate(pset):
+        features[i][0] = processor.power
 
-    graph.nodes["processor"].data["power"] = torch.tensor(powers)
+    graph.nodes["processor"].data["features"] = features
 
     return graph
 

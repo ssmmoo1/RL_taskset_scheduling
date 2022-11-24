@@ -1,20 +1,10 @@
 from Task import Task
 from Scheduler import Scheduler
-
-
-def calc_reward(ready_tasks):
-    reward = 0
-    for task in ready_tasks:
-        if task.period <=0:
-            reward-=1
-        else:
-            reward+=1
-    return reward
+from Graph import create_task_graph
 
 class OS:
     #Prememption will occur at every time step so time slice will always be 1
-    def __init__(self, taskset, pset, scheduler):
-        self.scheduler = scheduler
+    def __init__(self, taskset, pset):
         self.taskset = taskset #list of readonly tasks that define the task set
         self.pset = pset    #list of processor objects
         self.tp_mapping = [] #array of diciontaries {"processor":p, "task":t}
@@ -29,21 +19,33 @@ class OS:
     #map tasks to processors
     #run the tasks on the processors
 
-    def step(self):
+    def calc_reward(self):
+        return 1
+
+    def reset(self):
+        self.ready_tasks = []
+        self.previous_tasks = []
+        self.time = 0
+        self.tp_mapping = []
+        for t in self.taskset:
+            self.ready_tasks.append(Task.create_runnable(t))
+
+        state_graph = create_task_graph(self.previous_tasks, self.ready_tasks, self.pset, self.tp_mapping)
+        return state_graph
+
+    def step(self, action):
+        self.time+=1
+
+        self.tp_mapping = action #TODO need to add on to this to make it get the correct object references
+
+        self.previous_tasks = self.ready_tasks.copy()
+
 
         #First schedule tasks that are ready to run
         for t in self.taskset:
             # at each period for the task schedule it
             if self.time % t.period == 0:
                 self.ready_tasks.append(Task.create_runnable(t))
-
-
-
-        #Now call scheduler to map tasks to processors
-        self.tp_mapping = self.scheduler(self.previous_tasks, self.ready_tasks, self.pset, self.tp_mapping)
-
-
-        self.previous_tasks = self.ready_tasks.copy() #TODO decide if I want to copy here
 
         #Now execute mapped tasks
         for tp_map in self.tp_mapping:
@@ -57,7 +59,7 @@ class OS:
         for task in self.ready_tasks:
             task.period-=1
 
-        reward = calc_reward(self.ready_tasks) #calculate reward based on deadlines being misssed
+        reward = self.calc_reward() #calculate reward
 
         print(f"Time Step: {self.time}")
         print(self.ready_tasks)
@@ -65,7 +67,9 @@ class OS:
         print(f"OS reward {reward}")
         print("")
 
-        self.time+=1
+        state_graph = create_task_graph(self.previous_tasks, self.ready_tasks, self.pset, self.tp_mapping)
+
+        return state_graph, reward
 
 
 
