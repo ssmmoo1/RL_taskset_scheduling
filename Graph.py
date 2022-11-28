@@ -22,11 +22,11 @@ def create_task_graph(previous_tasks, ready_tasks, pset, tp_mapping):
     np_v = np.tile(np_v, len(previous_tasks))
 
 
-    print("Fully Connected Start Nodes")
-    print(np_u)
-    print("Fully Connected End Nodes")
-    print(np_v)
-    print()
+    # print("Fully Connected Start Nodes")
+    # print(np_u)
+    # print("Fully Connected End Nodes")
+    # print(np_v)
+    # print()
 
     #Create processing only graph
     p_u = [] #tasks
@@ -48,27 +48,23 @@ def create_task_graph(previous_tasks, ready_tasks, pset, tp_mapping):
     np_u = np.delete(np_u, np_remove_indices)
     np_v = np.delete(np_v, np_remove_indices)
 
-
-    #Convert start and end node lists to tensors
     #Link defined graph connecting tasks that are not mapped to a given processor
-    np_u = torch.tensor(np_u)
-    np_v = torch.tensor(np_v)
 
-    print("Not Processing Start Nodes")
-    print(np_u)
-    print("Not Processing End Nodes")
-    print(np_v)
-    print()
 
-    #Link defined graph connected tasks that are mapped to a processor
-    p_u = torch.tensor(p_u)
-    p_v = torch.tensor(p_v)
-
-    print("Processing Start Nodes")
-    print(p_u)
-    print("Processing End Nodes")
-    print(p_v)
-    print()
+    # print("Not Processing Start Nodes")
+    # print(np_u)
+    # print("Not Processing End Nodes")
+    # print(np_v)
+    # print()
+    #
+    # #Link defined graph connected tasks that are mapped to a processor
+    #
+    #
+    # print("Processing Start Nodes")
+    # print(p_u)
+    # print("Processing End Nodes")
+    # print(p_v)
+    # print()
 
     #Create graph to connect all processors to ready tasks that it could process
 
@@ -80,17 +76,21 @@ def create_task_graph(previous_tasks, ready_tasks, pset, tp_mapping):
     wp_v = np.arange(len(ready_tasks))
     wp_v = np.tile(wp_v, len(pset))
 
-    wp_u = torch.tensor(wp_u)
-    wp_v = torch.tensor(wp_v)
-
-    print("Will Process Start Nodes")
-    print(wp_u)
-    print("Will Process End Nodes")
-    print(wp_v)
-    print()
+    # print("Will Process Start Nodes")
+    # print(wp_u)
+    # print("Will Process End Nodes")
+    # print(wp_v)
+    # print()
 
     #Create heterograph that links tasks to processors which two types of edges, processing and not processing
-    graph_data = {("previous_task", "not_processing", "processor"): (np_u,np_v), ("previous_task","processing", "processor"):(p_u, p_v), ("processor", "will_process", "ready_task"):(wp_u, wp_v)}
+    graph_data_1 = {("previous_task", "not_processing", "processor"): (np_u,np_v), ("previous_task","processing", "processor"):(p_u, p_v), ("processor", "will_process", "ready_task"):(wp_u, wp_v)}
+
+    #add reverse edges to make it undirected
+    graph_data_2 = {("processor", "not_processing_r", "previous_task"): (np_v,np_u), ("processor","processing_r", "previous_task"):(p_v, p_u), ("ready_task", "will_process_r", "processor"):(wp_v, wp_u)}
+
+    graph_data = graph_data_1 | graph_data_2
+
+
     graph = dgl.heterograph(graph_data)
 
     #Add node and edge features

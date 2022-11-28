@@ -9,7 +9,7 @@ from torch.distributions import Categorical
 from collections import deque
 
 #Edge prediction model that uses RGCN and DP-Predictor
-class TaskGCN(nn.Module):
+class TaskGCN_Dot(nn.Module):
     def __init__(self, in_features, hidden_features, out_features, rel_names):
         super().__init__()
         self.sage = RGCN(in_features, hidden_features, out_features, rel_names)
@@ -22,9 +22,30 @@ class TaskGCN(nn.Module):
     def forward(self, g, x, etype):
         h = self.sage(g,x) #pass through RGCN to get node embeddings
 
-        #TODO determine shape and make softwax work
-        #TODO Need to do this per processor
         predictions = self.pred(g, h, etype) #Predict scores for edges between processors and ready tasks
+
+        predictions = torch.reshape(predictions, ((g.num_nodes("processor"), g.num_nodes("ready_task"))))
+        predictions = F.softmax(predictions, dim=1)
+
+        return predictions
+
+
+class TaskGCN_MLP(nn.Module):
+    def __init__(self, in_features, hidden_features, out_features, rel_names):
+        super().__init__()
+        self.sage = RGCN(in_features, hidden_features, out_features, rel_names)
+        self.pred = HeteroMLPPredictor(out_features, 1)
+
+        #Save actions and rewards for REINFORCE
+        self.saved_log_probs = []
+        self.rewards = []
+
+    def forward(self, g, x, etype):
+        h = self.sage(g,x) #pass through RGCN to get node embeddings
+
+        predictions = self.pred(g, h, etype) #Predict scores for edges between processors and ready tasks
+
+        predictions = torch.reshape(predictions, ((g.num_nodes("processor"), g.num_nodes("ready_task"))))
         predictions = F.softmax(predictions, dim=1)
 
         return predictions
@@ -37,8 +58,8 @@ class RGCN(nn.Module):
         super().__init__()
 
         self.conv1 = dglnn.HeteroGraphConv({
-            rel: dglnn.GraphConv(in_feats, hid_feats) for rel in rel_names}, aggregate='sum')
-        self.conv2 = dglnn.HeteroGraphConv({rel: dglnn.GraphConv(hid_feats, out_feats) for rel in rel_names}, aggregate='sum')
+            rel: dglnn.GraphConv(in_feats, hid_feats) for rel in rel_names}, aggregate='max')
+        self.conv2 = dglnn.HeteroGraphConv({rel: dglnn.GraphConv(hid_feats, out_feats) for rel in rel_names}, aggregate='max')
 
     def forward(self, graph, inputs):
         h = self.conv1(graph, inputs)
@@ -53,4 +74,26 @@ class HeteroDotProductPredictor(nn.Module):
         with graph.local_scope():
             graph.ndata['h'] = h
             graph.apply_edges(fn.u_dot_v('h', 'h', 'score'), etype=etype)
+            output = graph.edges[etype].data['score']
+            return output
+
+
+class HeteroMLPPredictor(nn.Module):
+    def __init__(self, in_features, out_classes):
+        super().__init__()
+        self.W = nn.Linear(in_features * 2, out_classes)
+
+    def apply_edges(self, edges):
+        h_u = edges.src['h']
+        h_v = edges.dst['h']
+        score = self.W(torch.cat([h_u, h_v], 1))
+        return {'score': score}
+
+    def forward(self, graph, h, etype):
+        # h contains the node representations for each edge type computed from
+        # the GNN for heterogeneous graphs defined in the node classification
+        # section (Section 5.1).
+        with graph.local_scope():
+            graph.ndata['h'] = h   # assigns 'h' of all node types in one shot
+            graph.apply_edges(self.apply_edges, etype=etype)
             return graph.edges[etype].data['score']

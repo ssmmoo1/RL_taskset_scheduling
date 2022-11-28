@@ -1,6 +1,7 @@
 from Task import Task
 from Scheduler import Scheduler
 from Graph import create_task_graph
+from copy import deepcopy
 
 class OS:
     #Prememption will occur at every time step so time slice will always be 1
@@ -20,7 +21,11 @@ class OS:
     #run the tasks on the processors
 
     def calc_reward(self):
-        return 1
+        reward = 5
+        for task in self.ready_tasks:
+            if task.period < 0:
+                reward = 0
+        return reward
 
     def reset(self):
         self.ready_tasks = []
@@ -36,10 +41,13 @@ class OS:
     def step(self, action):
         self.time+=1
 
-        self.tp_mapping = action #TODO need to add on to this to make it get the correct object references
+        if action is not None:
+            self.tp_mapping = [{"processor":self.pset[0], "task":self.ready_tasks[action]}]#TODO need to add on to this to make it get the correct object references
+        else:
+            self.tp_mapping = []
 
+        #self.previous_tasks = deepcopy(self.ready_tasks)
         self.previous_tasks = self.ready_tasks.copy()
-
 
         #First schedule tasks that are ready to run
         for t in self.taskset:
@@ -67,8 +75,10 @@ class OS:
         print(f"OS reward {reward}")
         print("")
 
-        state_graph = create_task_graph(self.previous_tasks, self.ready_tasks, self.pset, self.tp_mapping)
+        if len(self.ready_tasks) == 0:
+            return None, None
 
+        state_graph = create_task_graph(self.previous_tasks, self.ready_tasks, self.pset, self.tp_mapping)
         return state_graph, reward
 
 
