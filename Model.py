@@ -58,8 +58,8 @@ class RGCN(nn.Module):
         super().__init__()
 
         self.conv1 = dglnn.HeteroGraphConv({
-            rel: dglnn.GraphConv(in_feats, hid_feats) for rel in rel_names}, aggregate='max')
-        self.conv2 = dglnn.HeteroGraphConv({rel: dglnn.GraphConv(hid_feats, out_feats) for rel in rel_names}, aggregate='max')
+            rel: dglnn.SAGEConv(in_feats, hid_feats, "mean") for rel in rel_names}, aggregate='sum')
+        self.conv2 = dglnn.HeteroGraphConv({rel: dglnn.SAGEConv(hid_feats, out_feats, "mean") for rel in rel_names}, aggregate='sum')
 
     def forward(self, graph, inputs):
         h = self.conv1(graph, inputs)

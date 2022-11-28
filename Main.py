@@ -1,5 +1,5 @@
 from Processor import Processor
-from Scheduler import Scheduler, EDF_Scheduler
+from Scheduler import Scheduler, EDF_Scheduler, Model_Scheduler
 from Task import Task
 from OS import OS
 from time import time
@@ -10,26 +10,30 @@ import torch.optim as optim
 import numpy as np
 from torch.distributions import Categorical
 import matplotlib.pyplot as plt
+from Graph import create_task_graph
+
+
 
 #Create set of processors
 pset = Processor.create_homogeneous_pset(1,1)
 
 #Create set of tasks
-task1 = Task.create_non_runnable(2, 1)
-task2 = Task.create_non_runnable(10, 3)
-task3 = Task.create_non_runnable(10, 2)
+task1 = Task.create_non_runnable(10, 2)
+task2 = Task.create_non_runnable(5, 3)
+task3 = Task.create_non_runnable(3, 1)
+
 tset = [task1,task2,task3]
 #Create OS
 os = OS(tset, pset)
 
 
-model = TaskGCN_Dot(2, 5, 5, ["processing", "not_processing", "will_process","processing_r", "not_processing_r", "will_process_r"])
+model = TaskGCN_MLP(2, 5, 5, ["processing", "not_processing", "will_process","processing_r", "not_processing_r", "will_process_r"])
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
 eps = np.finfo(np.float32).eps.item()
 GAMMA = 0.99
-
-NUM_EPISODES = 500
-TIME_STEPS = 30
+MODEL_PATH = "model_bad.pth"
+NUM_EPISODES = 2
+TIME_STEPS = 100
 EP_RESET = True
 
 def select_action(state):
@@ -65,14 +69,13 @@ def finish_episode():
 
 
 
-def main():
+def main_train_gnn():
     running_reward = 0
     x = list(range(NUM_EPISODES))
     rewards = []
     losses = []
 
     state = os.reset()
-
 
     for episode in range(NUM_EPISODES):
 
@@ -84,19 +87,18 @@ def main():
         for t in range(1,TIME_STEPS):
             #if no tasks are ready then don't run the scheduler
             if state is None:
-                state, reward = os.step(None)
+                state, reward, _ = os.step(None)
                 continue
 
+            state = create_task_graph(*state)
             action = select_action(state) #returns index of ready task to run
-            state, reward = os.step(action)
+            state, reward, _ = os.step(action)
             if reward is None:
                 continue
             model.rewards.append(reward)
             ep_reward += reward
 
         rewards.append(ep_reward)
-
-
 
         running_reward = 0.05 * ep_reward + (1-0.05) * running_reward
         loss = finish_episode()
@@ -107,6 +109,8 @@ def main():
         print('Episode {}\tLast reward: {:.2f}\tAverage reward: {:.2f}'.format(
             episode, ep_reward, running_reward))
 
+    torch.save(model.state_dict(), MODEL_PATH)
+
     plt.subplot(1,2,1)
     plt.plot(x, rewards)
     plt.title("Rewards")
@@ -115,5 +119,37 @@ def main():
     plt.plot(x,losses)
     plt.title("Loss")
     plt.show()
+
+def inference(scheduler):
+
+    state = os.reset()
+    deadlines_missed = 0
+    rewards = 0
+    for t in range(1, TIME_STEPS):
+
+        action = None
+        if state is not None:
+            action = scheduler(*state)
+
+        state, reward, deadline_missed = os.step(action)
+
+        rewards+= reward
+        deadlines_missed += deadline_missed
+
+    print(f"Total rewards: {rewards}, Missed Deadlines: {deadlines_missed}")
+
+def main_compare():
+    inference(EDF_Scheduler)
+
+    model.load_state_dict(torch.load(MODEL_PATH))
+    model.eval()
+    Model_Scheduler.model = model
+
+    inference(Model_Scheduler)
+
+
 if __name__ == "__main__":
-    main()
+    #main_train_gnn()
+    main_compare()
+
+

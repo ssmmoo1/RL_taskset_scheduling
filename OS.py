@@ -21,11 +21,20 @@ class OS:
     #run the tasks on the processors
 
     def calc_reward(self):
-        reward = 5
+
+        if len(self.ready_tasks) == 0:
+            return 0, 0
+
+        reward = 0
+        deadlines_missed = 0
         for task in self.ready_tasks:
-            if task.period < 0:
-                reward = 0
-        return reward
+            if task.period >= 0:
+                reward +=1
+            else:
+                reward -=5
+                deadlines_missed+=1
+
+        return reward/len(self.ready_tasks), deadlines_missed
 
     def reset(self):
         self.ready_tasks = []
@@ -35,8 +44,7 @@ class OS:
         for t in self.taskset:
             self.ready_tasks.append(Task.create_runnable(t))
 
-        state_graph = create_task_graph(self.previous_tasks, self.ready_tasks, self.pset, self.tp_mapping)
-        return state_graph
+        return (self.previous_tasks, self.ready_tasks, self.pset, self.tp_mapping)
 
     def step(self, action):
         self.time+=1
@@ -67,7 +75,7 @@ class OS:
         for task in self.ready_tasks:
             task.period-=1
 
-        reward = self.calc_reward() #calculate reward
+        reward, deadlines_missed = self.calc_reward() #calculate reward
 
         print(f"Time Step: {self.time}")
         print(self.ready_tasks)
@@ -76,11 +84,9 @@ class OS:
         print("")
 
         if len(self.ready_tasks) == 0:
-            return None, None
+            return None, 0, 0
 
-        state_graph = create_task_graph(self.previous_tasks, self.ready_tasks, self.pset, self.tp_mapping)
-        return state_graph, reward
-
+        return (self.previous_tasks, self.ready_tasks, self.pset, self.tp_mapping), reward, deadlines_missed
 
 
 
