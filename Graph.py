@@ -4,6 +4,14 @@ from Processor import Processor
 from Task import Task
 import numpy as np
 
+def index_of_task_id(task_list, task):
+    for i in range(len(task_list)):
+        if task.instance_id == task_list[i].instance_id:
+            return i
+
+    raise Exception("Mapped task was not found in previous task list")
+
+
 
 #Converts the state of the OS to a heterogenous graph
 #Three types of nodes: Previous Task, Processor, Future Task
@@ -36,7 +44,7 @@ def create_task_graph(previous_tasks, ready_tasks, pset, tp_mapping):
 
     #Only create links that indicate a processor is mapped to a task
     for mapping in tp_mapping:
-        task_index = previous_tasks.index(mapping["task"])
+        task_index = index_of_task_id(previous_tasks, mapping["task"])
         processor_index = pset.index(mapping["processor"])
 
         p_u.append(task_index)
@@ -49,8 +57,6 @@ def create_task_graph(previous_tasks, ready_tasks, pset, tp_mapping):
     np_v = np.delete(np_v, np_remove_indices)
 
     #Link defined graph connecting tasks that are not mapped to a given processor
-
-
     # print("Not Processing Start Nodes")
     # print(np_u)
     # print("Not Processing End Nodes")
@@ -58,8 +64,6 @@ def create_task_graph(previous_tasks, ready_tasks, pset, tp_mapping):
     # print()
     #
     # #Link defined graph connected tasks that are mapped to a processor
-    #
-    #
     # print("Processing Start Nodes")
     # print(p_u)
     # print("Processing End Nodes")
@@ -99,23 +103,25 @@ def create_task_graph(previous_tasks, ready_tasks, pset, tp_mapping):
 
     #Features for previous tasks
 
-    features = torch.zeros(len(previous_tasks), 2)
+    features = torch.zeros(len(previous_tasks), 3)
     for i, task in enumerate(previous_tasks):
         features[i][0] = task.exec_time
         features[i][1] = task.period
+        features[i][2] = task.deadline
 
     graph.nodes["previous_task"].data["features"] = features
 
     #Features for ready tasks
-    features = torch.zeros(len(ready_tasks), 2)
+    features = torch.zeros(len(ready_tasks), 3)
     for i, task in enumerate(ready_tasks):
         features[i][0] = task.exec_time
         features[i][1] = task.period
+        features[i][2] = task.deadline
 
     graph.nodes["ready_task"].data["features"] = features
 
     #Features for processors
-    features = torch.zeros(len(pset), 2)
+    features = torch.zeros(len(pset), 3)
     for i, processor in enumerate(pset):
         features[i][0] = processor.power
 
