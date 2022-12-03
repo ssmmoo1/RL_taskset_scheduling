@@ -180,17 +180,17 @@ def experiment_1(epochs):
             print(f"Epoch {epoch}, Step {i}/{len(train_task_sets)}")
 
 
-            Model_Scheduler.model = model
-            print(f"Epoch {epoch} Starting Validation")
-            model.eval()
-            reward, md, cs = benchmark(test_task_sets, Model_Scheduler, processors)
-            model.train()
-            print(f"Epoch {epoch} Finished Validation")
-            test_rewards.append(reward)
-            test_md.append(md)
-            test_cs.append(cs)
-            torch.save(model.state_dict(), model_path)
-            print(f"Epoch {epoch} saved model checkpoint")
+        Model_Scheduler.model = model
+        print(f"Epoch {epoch} Starting Validation")
+        model.eval()
+        reward, md, cs = benchmark(test_task_sets, Model_Scheduler, processors)
+        model.train()
+        print(f"Epoch {epoch} Finished Validation")
+        test_rewards.append(reward)
+        test_md.append(md)
+        test_cs.append(cs)
+        torch.save(model.state_dict(), model_path)
+        print(f"Epoch {epoch} saved model checkpoint")
 
         print(f"Epoch {epoch} completed")
 
@@ -377,18 +377,20 @@ def benchmark(tasksets, scheduler, pset):
 
 
 def run_experiments():
+    start_time = time()
     #make directories for output data
     makedirs("datasets", exist_ok=True) #folder for full datasets
     makedirs("experiment_1", exist_ok=True)
     makedirs("experiment_2", exist_ok=True)
     makedirs("experiment_3", exist_ok=True)
 
-    generate_datasets("datasets/", 80, 20) #generate train and test sets for 3 experiments with 80 train sets, 20 test sets
+    generate_datasets("datasets/", 64, 16) #generate train and test sets for 3 experiments with 80 train sets, 20 test sets
 
     experiment_1(5) #single core
-    experiment_2(50) #quad core homogeneous
-    experiment_3(50) #octacore heterogeneous
+    experiment_2(25) #quad core homogeneous
+    experiment_3(25) #octacore heterogeneous
 
+    print(f"Total Experiment time: {time() - start_time}")
 
 if __name__ == "__main__":
     run_experiments()

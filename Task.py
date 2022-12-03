@@ -171,29 +171,29 @@ def main_test():
 def generate_datasets(folder_path, train_tasks, test_tasks):
 
     #single core train and test
-    task_sets = generate_task_dataset(train_tasks, 3, 25, 100, 300, 100, 100)
+    task_sets = generate_task_dataset(train_tasks, 3, 25, 100, 200, 100, 100)
     with open(folder_path + "single_core_train_set.pkl", "wb") as file:
         pickle.dump(task_sets, file)
 
-    task_sets = generate_task_dataset(test_tasks, 3, 25, 100, 300, 100, 100)
+    task_sets = generate_task_dataset(test_tasks, 3, 25, 100, 200, 100, 100)
     with open(folder_path +"single_core_test_set.pkl", "wb") as file:
         pickle.dump(task_sets, file)
 
     #multicore homogenous train and test
-    task_sets = generate_task_dataset(train_tasks, 3, 25, 100, 300, 400, 400) #quad-core
+    task_sets = generate_task_dataset(train_tasks, 3, 25, 100, 200, 400, 400) #quad-core
     with open(folder_path +"homogeneous_quad_train_set.pkl", "wb") as file:
         pickle.dump(task_sets, file)
 
-    task_sets = generate_task_dataset(test_tasks, 3, 25, 100, 300, 400, 400) #quad-core
+    task_sets = generate_task_dataset(test_tasks, 3, 25, 100, 200, 400, 400) #quad-core
     with open(folder_path +"homogeneous_quad_test_set.pkl", "wb") as file:
         pickle.dump(task_sets, file)
 
     #multicore heterogenous train and test
-    task_sets = generate_task_dataset(train_tasks, 3, 25, 100, 300, 400, 800)
+    task_sets = generate_task_dataset(train_tasks, 3, 25, 100, 200, 400, 800)
     with open(folder_path +"heterogeneous_train_set.pkl", "wb") as file:
         pickle.dump(task_sets, file)
 
-    task_sets = generate_task_dataset(test_tasks, 3, 25, 100, 300, 400, 800)
+    task_sets = generate_task_dataset(test_tasks, 3, 25, 100, 200, 400, 800)
     with open(folder_path +"heterogeneous_test_set.pkl", "wb") as file:
         pickle.dump(task_sets, file)
 
