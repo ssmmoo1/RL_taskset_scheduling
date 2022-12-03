@@ -15,6 +15,7 @@ class Processor:
         else:
             self.context_switched = False
 
+        self.previous_task_instance = task.instance_id
         task.exec_time -= self.power
         if task.exec_time <= 0:
             return True

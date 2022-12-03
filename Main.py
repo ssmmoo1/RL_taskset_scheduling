@@ -1,6 +1,6 @@
 from Processor import Processor
 from Scheduler import Scheduler, EDF_Scheduler, Model_Scheduler
-from Task import Task, TaskSet
+from Task import generate_datasets
 from OS import OS
 from time import time
 from Model import TaskGCN
@@ -14,6 +14,7 @@ from Graph import create_task_graph
 from random import randint
 import pickle
 from tqdm import tqdm
+from os import makedirs
 
 #RL and Graph Constants
 RELATIONS =  ["processing", "not_processing", "will_process","processing_r", "not_processing_r", "will_process_r"]
@@ -58,66 +59,6 @@ def finish_episode(model, optimizer):
 
     return policy_loss
 
-
-#Trains a gnn model
-def main_train_gnn(os, model, optimizer):
-    running_reward = 0
-    x = list(range(NUM_EPISODES))
-    rewards = []
-    missed_deadlines = []
-    context_switches = []
-
-    state = os.reset()
-
-    for episode in range(NUM_EPISODES):
-
-        ep_reward = 0
-
-        if EP_RESET is True:
-            state = os.reset()
-
-        for t in range(1,TIME_STEPS):
-            #if no tasks are ready then don't run the scheduler
-            if state is None:
-                state, reward = os.step(None)
-                continue
-
-            state = create_task_graph(*state)
-            action = select_action(model, state) #returns index of ready task to run
-            state, reward = os.step(action)
-            if reward is None:
-                continue
-            model.rewards.append(reward)
-            ep_reward += reward
-
-        running_reward = 0.05 * ep_reward + (1-0.05) * running_reward
-        finish_episode(model, optimizer)
-
-        Model_Scheduler.model = model
-        model.eval()
-        reward, md, cs = inference(Model_Scheduler)
-        rewards.append(reward)
-        missed_deadlines.append(md)
-        context_switches.append(cs)
-        model.train()
-
-        print('Episode {}\tLast reward: {:.2f}\tAverage reward: {:.2f}'.format(
-            episode, ep_reward, running_reward))
-
-    torch.save(model.state_dict(), MODEL_PATH)
-
-    return rewards, missed_deadlines, context_switches
-
-    # plt.subplot(1,2,1)
-    # plt.plot(x, rewards)
-    # plt.title("Rewards")
-    # plt.subplot(1, 2, 2)
-    # plt.plot(x, missed_deadlines)
-    # plt.title("Missed Deadlines")
-    #
-    # plt.show()"
-
-#simulate a task set using the given scheduler function and return performance statistics
 def inference(scheduler, os, time_steps):
 
     state = os.reset()
@@ -134,57 +75,54 @@ def inference(scheduler, os, time_steps):
 
     print(f"Total rewards: {rewards}, Missed Deadlines: {os.deadlines_missed}, Context Switches: {os.context_switches}")
     return rewards, os.deadlines_missed, os.context_switches
+def reload_training_plot():
+    save_path = "experiment_3/"
+    with open(save_path + "rewards.pkl", "rb") as file:
+        rewards = pickle.load(file)
+    with open(save_path + "deadlines.pkl", "rb") as file:
+        deadlines = pickle.load(file)
+    with open(save_path + "context_switches.pkl", "rb") as file:
+        context_switches = pickle.load(file)
 
+    plot_training(rewards, deadlines, context_switches)
 
-def main_compare():
-    inference(EDF_Scheduler, os, TIME_STEPS)
+def plot_training(rewards, deadlines, context_switches, save_path=None):
+    plt.clf()
 
-    model = TaskGCN(3, 8, 4, RELATIONS, mlp=True)
-
-    model.load_state_dict(torch.load(MODEL_PATH))
-    model.eval()
-    Model_Scheduler.model = model
-
-    inference(Model_Scheduler, os, TIME_STEPS)
-
-
-def plot_training(rewards, deadlines, context_switches):
     plt.subplot(1,3,1)
+    plt.grid(visible=True)
     plt.plot(list(range(len(rewards))), rewards)
     plt.title("Rewards")
+    plt.xlabel("Epochs")
+    plt.ylabel("Reward")
+
     plt.subplot(1, 3, 2)
+    plt.grid(visible=True)
     plt.plot(list(range(len(deadlines))), deadlines)
+    plt.xlabel("Epochs")
+    plt.ylabel("Missed Deadlines")
     plt.title("Missed Deadlines")
+
     plt.subplot(1, 3, 3)
+    plt.grid(visible=True)
     plt.plot(list(range(len(context_switches))), context_switches)
-    plt.title("Missed Deadlines")
-    plt.show()
+    plt.title("Context Switches")
+    plt.xlabel("Epochs")
+    plt.ylabel("Context Switches")
 
-def main_search():
-    plot_counter = 1
-    plt.figure(figsize=(16,200))
-    for hidden_feats in range(2,11,2):
-        for out_feats in range(1,5):
-            for mlp in [True, False]:
-                model = TaskGCN(2, hidden_feats, out_feats, RELATIONS, mlp=mlp)
-                optimizer = optim.Adam(model.parameters(), lr=1e-3)
-                rewards, missed_deadlines = main_train_gnn(model, optimizer)
+    plt.tight_layout()
 
-                plt.subplot(100,2,plot_counter)
-                plt.plot(list(range(NUM_EPISODES)), rewards)
-                plt.title(f"Rewards:Hidden Feats {hidden_feats}, Out Feats {out_feats}, MLP {mlp}")
-                plt.subplot(100, 2, plot_counter+1)
-                plt.plot(list(range(NUM_EPISODES)), missed_deadlines)
-                plt.title(f"Missed Deadlines:Hidden Feats {hidden_feats}, Out Feats {out_feats}, MLP {mlp}")
+    if save_path is None:
+        plt.show()
+    else:
+        plt.savefig(save_path+"training_plots.png")
+        with open(save_path+"rewards.pkl", "wb") as file:
+            pickle.dump(rewards, file)
+        with open(save_path+"deadlines.pkl", "wb") as file:
+            pickle.dump(deadlines, file)
+        with open(save_path+"context_switches.pkl", "wb") as file:
+            pickle.dump(context_switches, file)
 
-
-                model.eval()
-                Model_Scheduler.model = model
-                inference(Model_Scheduler)
-
-                plot_counter +=4
-
-    plt.savefig("compare_plots.png")
 
 def train_episode(os, time_steps, model, optimizer):
     state = os.reset()
@@ -207,11 +145,12 @@ def train_episode(os, time_steps, model, optimizer):
     finish_episode(model, optimizer)
 
 #single core
-def experiment_1():
-    model_path = "trained_model.pth"
-    train_path = "small_datasets/small_train.pkl"
-    test_path = "small_datasets/small_test.pkl"
-    epochs = 2
+def experiment_1(epochs):
+    model_path = "experiment_1/trained_model.pth"
+    train_path = "datasets/single_core_train_set.pkl"
+    test_path = "datasets/single_core_test_set.pkl"
+
+    processors = Processor.create_homogeneous_pset(1, 1)
 
     #load taskets
     with open(train_path, "rb") as file:
@@ -223,7 +162,6 @@ def experiment_1():
 
     #create model
     model = TaskGCN(3, 8, 4, RELATIONS, mlp=True)
-    #model.load_state_dict(torch.load(model_path))
     model.train()
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
@@ -237,7 +175,7 @@ def experiment_1():
 
         for i, task_set in enumerate(train_task_sets):
             #create OS
-            os = OS(task_set.tasks, Processor.create_homogeneous_pset(1,1))
+            os = OS(task_set.tasks, processors)
             train_episode(os, task_set.lcm+1, model, optimizer)
             print(f"Epoch {epoch}, Step {i}/{len(train_task_sets)}")
 
@@ -245,7 +183,7 @@ def experiment_1():
             Model_Scheduler.model = model
             print(f"Epoch {epoch} Starting Validation")
             model.eval()
-            reward, md, cs = benchmark(test_task_sets, Model_Scheduler, Processor.create_homogeneous_pset(1,1))
+            reward, md, cs = benchmark(test_task_sets, Model_Scheduler, processors)
             model.train()
             print(f"Epoch {epoch} Finished Validation")
             test_rewards.append(reward)
@@ -258,12 +196,162 @@ def experiment_1():
 
     model.eval()
     #Benchmark trained model and heuristic
-    reward_m, md_m, cs_m = benchmark(test_task_sets, Model_Scheduler, Processor.create_homogeneous_pset(1,1))
-    reward_h, md_h, cs_h = benchmark(test_task_sets, EDF_Scheduler, Processor.create_homogeneous_pset(1, 1))
+    reward_m, md_m, cs_m = benchmark(test_task_sets, Model_Scheduler, processors)
+    reward_h, md_h, cs_h = benchmark(test_task_sets, EDF_Scheduler, processors)
     print(f"Trained Model Based Benchmark\n\tRewards: {reward_m} \n\tMissed Deadlines: {md_m}\n\t Context Switches: {cs_m}")
     print(f"EDF Benchmark\n \t Rewards: {reward_h} \n\tMissed Deadlines: {md_h}\n\t Context Switches: {cs_h}")
 
-    plot_training(test_rewards, test_md, test_cs)
+    with open("experiment_1/benchmark_result.csv", "w+") as file:
+        file.write("scheduler, reward, missed_deadlines, context_switches\n")
+        file.write(f"trained model, {reward_m}, {md_m}, {cs_m}\n")
+        file.write(f"EDF, {reward_h}, {md_h}, {cs_h}\n")
+
+    plot_training(test_rewards, test_md, test_cs, save_path="experiment_1/")
+
+def experiment_2(epochs):
+    model_path = "experiment_2/trained_model.pth"
+    train_path = "datasets/homogeneous_quad_train_set.pkl"
+    test_path = "datasets/homogeneous_quad_test_set.pkl"
+
+    processors = Processor.create_homogeneous_pset(4,1)
+
+    #load taskets
+    with open(train_path, "rb") as file:
+        train_task_sets = pickle.load(file)
+
+    # load taskets
+    with open(test_path, "rb") as file:
+        test_task_sets = pickle.load(file)
+
+    #create model
+    model = TaskGCN(3, 8, 4, RELATIONS, mlp=True)
+    model.train()
+    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+
+    #Training Stats
+    test_rewards = []
+    test_md = []
+    test_cs = []
+
+    #Train model on train set
+    for epoch in range(epochs): #each epoch train on all task_sets
+
+        for i, task_set in enumerate(train_task_sets):
+            #create OS
+            os = OS(task_set.tasks, processors)
+            train_episode(os, task_set.lcm+1, model, optimizer)
+            print(f"Epoch {epoch}, Step {i}/{len(train_task_sets)}")
+
+
+        Model_Scheduler.model = model
+        print(f"Epoch {epoch} Starting Validation")
+        model.eval()
+        reward, md, cs = benchmark(test_task_sets, Model_Scheduler, processors)
+        model.train()
+        print(f"Epoch {epoch} Finished Validation")
+        test_rewards.append(reward)
+        test_md.append(md)
+        test_cs.append(cs)
+        torch.save(model.state_dict(), model_path)
+        print(f"Epoch {epoch} saved model checkpoint")
+
+        print(f"Epoch {epoch} completed")
+
+    model.eval()
+    #Benchmark trained model and heuristic
+    reward_m, md_m, cs_m = benchmark(test_task_sets, Model_Scheduler, processors)
+    reward_h, md_h, cs_h = benchmark(test_task_sets, EDF_Scheduler, processors)
+    print(f"Trained Model Based Benchmark\n\tRewards: {reward_m} \n\tMissed Deadlines: {md_m}\n\t Context Switches: {cs_m}")
+    print(f"EDF Benchmark\n \t Rewards: {reward_h} \n\tMissed Deadlines: {md_h}\n\t Context Switches: {cs_h}")
+
+    with open("experiment_2/benchmark_result.csv", "w+") as file:
+        file.write("scheduler, reward, missed_deadlines, context_switches\n")
+        file.write(f"trained model, {reward_m}, {md_m}, {cs_m}\n")
+        file.write(f"EDF, {reward_h}, {md_h}, {cs_h}\n")
+
+    plot_training(test_rewards, test_md, test_cs,save_path="experiment_2/")
+
+
+def experiment_3(epochs):
+    model_path = "experiment_3/trained_model.pth"
+    train_path = "datasets/heterogeneous_train_set.pkl"
+    test_path = "datasets/heterogeneous_test_set.pkl"
+
+    processors = Processor.create_hetero_pset([2,2,2,2,1,1,1,1])
+
+    #load taskets
+    with open(train_path, "rb") as file:
+        train_task_sets = pickle.load(file)
+
+    # load taskets
+    with open(test_path, "rb") as file:
+        test_task_sets = pickle.load(file)
+
+    #create model
+    model = TaskGCN(3, 8, 4, RELATIONS, mlp=True)
+    model.train()
+    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+
+    #Training Stats
+    test_rewards = []
+    test_md = []
+    test_cs = []
+
+    #Train model on train set
+    for epoch in range(epochs): #each epoch train on all task_sets
+
+        for i, task_set in enumerate(train_task_sets):
+            #create OS
+            os = OS(task_set.tasks, processors)
+            train_episode(os, task_set.lcm+1, model, optimizer)
+            print(f"Epoch {epoch}, Step {i}/{len(train_task_sets)}")
+
+
+        Model_Scheduler.model = model
+        print(f"Epoch {epoch} Starting Validation")
+        model.eval()
+        reward, md, cs = benchmark(test_task_sets, Model_Scheduler, processors)
+        model.train()
+        print(f"Epoch {epoch} Finished Validation")
+        test_rewards.append(reward)
+        test_md.append(md)
+        test_cs.append(cs)
+        torch.save(model.state_dict(), model_path)
+        print(f"Epoch {epoch} saved model checkpoint")
+
+        print(f"Epoch {epoch} completed")
+
+    model.eval()
+    #Benchmark trained model and heuristic
+    reward_m, md_m, cs_m = benchmark(test_task_sets, Model_Scheduler, processors)
+    reward_h, md_h, cs_h = benchmark(test_task_sets, EDF_Scheduler, processors)
+    print(f"Trained Model Based Benchmark\n\tRewards: {reward_m} \n\tMissed Deadlines: {md_m}\n\t Context Switches: {cs_m}")
+    print(f"EDF Benchmark\n \t Rewards: {reward_h} \n\tMissed Deadlines: {md_h}\n\t Context Switches: {cs_h}")
+
+    #Save benchmark data to csv file
+    with open("experiment_3/benchmark_result.csv", "w+") as file:
+        file.write("scheduler, reward, missed_deadlines, context_switches\n")
+        file.write(f"trained model, {reward_m}, {md_m}, {cs_m}\n")
+        file.write(f"EDF, {reward_h}, {md_h}, {cs_h}\n")
+
+
+
+    plot_training(test_rewards, test_md, test_cs,save_path="experiment_3/")
+
+def benchmark_schedulers():
+    with open("datasets/homogeneous_quad_test_set.pkl", "rb") as file:
+        task_sets = pickle.load(file)
+
+    model = TaskGCN(3, 8, 4, RELATIONS, mlp=True)
+    model.load_state_dict(torch.load("trained_model.pth"))
+    model.eval()
+    Model_Scheduler.model = model
+
+    reward_h, md_h, cs_h = benchmark(task_sets, EDF_Scheduler, Processor.create_homogeneous_pset(4, 1))
+    reward_m, md_m, cs_m = benchmark(task_sets, Model_Scheduler, Processor.create_homogeneous_pset(4, 1))
+    print(f"Trained Model Based Benchmark\n\tRewards: {reward_m} \n\tMissed Deadlines: {md_m}\n\t Context Switches: {cs_m}")
+    print(f"EDF Benchmark\n \t Rewards: {reward_h} \n\tMissed Deadlines: {md_h}\n\t Context Switches: {cs_h}")
+
 
 def benchmark(tasksets, scheduler, pset):
     # with open(dataset_path, "rb") as file:
@@ -287,15 +375,20 @@ def benchmark(tasksets, scheduler, pset):
     print(f"Benchmark Stats: Reward:{total_reward}, Missed Deadlines: {total_md}, Context Switches: {total_cs}")
     return total_reward, total_md, total_cs
 
-if __name__ == "__main__":
-    # model = TaskGCN(3, 8, 4, RELATIONS, mlp=True)
-    # model.load_state_dict(torch.load(MODEL_PATH))
-    # optimizer = optim.Adam(model.parameters(), lr=1e-3)
-    # rewards, deadlines = main_train_gnn(model, optimizer)
-    # plot_training(rewards, deadlines)
-    # main_compare()
-    #main_search()
-    #main_tasksets()
 
-    #benchmark("small_datasets/small_train.pkl", EDF_Scheduler, Processor.create_homogeneous_pset(1,1))
-    main_train_benchmark()
+def run_experiments():
+    #make directories for output data
+    makedirs("datasets", exist_ok=True) #folder for full datasets
+    makedirs("experiment_1", exist_ok=True)
+    makedirs("experiment_2", exist_ok=True)
+    makedirs("experiment_3", exist_ok=True)
+
+    generate_datasets("datasets/", 80, 20) #generate train and test sets for 3 experiments with 80 train sets, 20 test sets
+
+    experiment_1(5) #single core
+    experiment_2(50) #quad core homogeneous
+    experiment_3(50) #octacore heterogeneous
+
+
+if __name__ == "__main__":
+    run_experiments()
